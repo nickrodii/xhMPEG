@@ -69,8 +69,6 @@ body {
 .step-line.active {
   background: linear-gradient(90deg, var(--accent-2), var(--accent));
   box-shadow: 0 0 0 1px rgba(99, 102, 241, 0.4), 0 4px 12px rgba(99, 102, 241, 0.35);
-  background-size: 200% 100%;
-  animation: bar-wave 4s linear infinite;
 }
 
 .panel {
@@ -408,11 +406,6 @@ button:active:not(:disabled) {
   font-size: 100px;
   letter-spacing: 0.04em;
   margin: 14px;
-  background: linear-gradient(90deg, #7c3aed, #3b82f6, #7c3aed);
-  background-size: 200% 100%;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  animation: text-wave 6s linear infinite;
 }
 
 .progress {
@@ -465,13 +458,8 @@ button:active:not(:disabled) {
 
 .done-title {
   font-family: "Iceland", "Segoe UI", system-ui, sans-serif;
-  font-size: 100px;
+  font-size: 60px;
   margin: 4px 0 8px;
-  background: linear-gradient(90deg, #7c3aed, #3b82f6, #7c3aed);
-  background-size: 200% 100%;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  animation: text-wave 6s linear infinite;
 }
 
 .file-save-block {
@@ -511,24 +499,6 @@ button:active:not(:disabled) {
 .stepper,
 .sticky-info {
   position: relative;
-}
-
-@keyframes text-wave {
-  0% {
-    background-position: 200% 0;
-  }
-  100% {
-    background-position: -200% 0;
-  }
-}
-
-@keyframes bar-wave {
-  0% {
-    background-position: 200% 0;
-  }
-  100% {
-    background-position: -200% 0;
-  }
 }
 
 @media (max-width: 800px) {
