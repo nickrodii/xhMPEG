@@ -558,7 +558,7 @@ function App() {
         {fpsPreset === "custom" && (
           <input
             type="number"
-            placeholder="Custom fps"
+            placeholder="fps"
             value={customFps}
             onChange={(e) => setCustomFps(e.target.value)}
           />
@@ -726,12 +726,6 @@ function App() {
 
   return (
     <div className="app">
-      {step > 1 && (
-        <div className="brand-top">
-          <h1 className="brand-title brand-small">xhMPEG</h1>
-        </div>
-      )}
-
       {step > 1 && (
         <div className="stepper">
           {(isAudioOnly ? [2, 4, 5, 6] : [2, 3, 4, 5, 6]).map((i) => (
