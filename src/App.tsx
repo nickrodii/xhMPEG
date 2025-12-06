@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { Store } from "@tauri-apps/plugin-store";
@@ -240,6 +240,16 @@ function App() {
     return preset?.amount;
   }, [videoBitratePreset, customVideoBitrate, sourceVideoBitrate]);
 
+  const videoBitrateOptions = useMemo(() => {
+    if (sourceVideoBitrate) {
+      return [
+        { label: `Source (${sourceVideoBitrate} kbps)`, value: "source", amount: sourceVideoBitrate } as NumericPreset,
+        ...VIDEO_BITRATE_PRESETS.filter((p) => p.value !== "source"),
+      ];
+    }
+    return VIDEO_BITRATE_PRESETS;
+  }, [sourceVideoBitrate]);
+
   const audioBitrateValue = useMemo(() => {
     if (audioBitratePreset === "custom") {
       const v = parseInt(customAudioBitrate, 10);
@@ -439,6 +449,27 @@ function App() {
     }
   };
 
+  const handleMinimize = async () => {
+    const win = getCurrentWindow();
+    await win.minimize();
+  };
+
+  const handleClose = async () => {
+    const win = getCurrentWindow();
+    await win.close();
+  };
+
+  const handleTopBarMouseDown = async (e: ReactMouseEvent) => {
+    if (e.button !== 0) return;
+    const target = e.target as HTMLElement | null;
+    if (target && target.closest(".no-drag")) return;
+    try {
+      await getCurrentWindow().startDragging();
+    } catch (err) {
+      console.error("Drag failed", err);
+    }
+  };
+
   const renderTrimPage = () => {
     const startPct = durationMs ? (startMs / durationMs) * 100 : 0;
     const endPct = durationMs ? (endMs / durationMs) * 100 : 0;
@@ -575,16 +606,11 @@ function App() {
           onChange={(e) => setVideoBitratePreset(e.target.value)}
           disabled={!mediaInfo}
         >
-          {(sourceVideoBitrate
-            ? [{ label: `Source (${sourceVideoBitrate} kbps)`, value: "source", amount: sourceVideoBitrate } as NumericPreset]
-            : []
-          )
-            .concat(VIDEO_BITRATE_PRESETS)
-            .map((preset) => (
-              <option key={preset.value} value={preset.value}>
-                {preset.label}
-              </option>
-            ))}
+          {videoBitrateOptions.map((preset) => (
+            <option key={preset.value} value={preset.value}>
+              {preset.label}
+            </option>
+          ))}
         </select>
         {videoBitratePreset === "custom" && (
           <input
@@ -692,15 +718,46 @@ function App() {
   const renderWelcome = () => (
     <section className="welcome-plain">
       <h1 className="brand-title">xhMPEG</h1>
-      <p className="muted">Start by importing a media file to analyze and convert.</p>
-      <button className="primary" onClick={pickMediaFile} disabled={loadingInfo}>
-        {loadingInfo ? "Analyzing..." : "Begin"}
+      <p className="muted welcome-subtitle">
+        Trim, resize, and reformat any audio or video file using FFmpeg... Without the terminal.
+      </p>
+      <button
+        className="primary"
+        onClick={pickMediaFile}
+        disabled={loadingInfo}
+        style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}
+      >
+        <svg
+          width="18"
+          height="18"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M4 20h16" />
+          <path d="M12 4v9" />
+          <path d="m8 10 4 4 4-4" />
+        </svg>
+        {loadingInfo ? "Analyzing..." : "Import media"}
       </button>
+    </section>
+  );
+
+  const renderSettingsPage = () => (
+    <section className="panel settings-panel">
+      <h2>Settings</h2>
+      <p className="muted">Settings page (coming soon).</p>
     </section>
   );
 
   const renderStepContent = () => {
     switch (step) {
+      case 0:
+        return renderSettingsPage();
       case 1:
         return renderWelcome();
       case 2:
@@ -726,8 +783,86 @@ function App() {
 
   return (
     <div className="app">
+      <div
+        className={`top-bar drag-region ${step === 1 ? "top-bar-welcome" : ""}`}
+        data-tauri-drag-region
+        onMouseDown={handleTopBarMouseDown}
+      >
+        <div className="brand-top drag-region" data-tauri-drag-region>
+          {step > 1 && <h1 className="brand-title brand-small">xhMPEG</h1>}
+        </div>
+        <div className="window-controls no-drag" data-tauri-drag-region="false">
+          <button
+            type="button"
+            className="window-btn no-drag"
+            onClick={handleMinimize}
+            title="Minimize"
+            data-tauri-drag-region="false"
+            onMouseDown={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+          >
+            <svg
+              className="no-drag"
+              width="14"
+              height="14"
+              viewBox="0 0 14 14"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.4"
+            >
+              <line x1="3" y1="7" x2="11" y2="7" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            className="window-btn no-drag"
+            onClick={handleClose}
+            title="Close"
+            data-tauri-drag-region="false"
+            onMouseDown={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+          >
+            <svg
+              className="no-drag"
+              width="14"
+              height="14"
+              viewBox="0 0 14 14"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.2"
+              strokeLinecap="round"
+            >
+              <line x1="3.5" y1="3.5" x2="10.5" y2="10.5" />
+              <line x1="10.5" y1="3.5" x2="3.5" y2="10.5" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      {step === 1 && (
+        <button className="settings-btn no-drag" title="Settings" onClick={() => setStep(0)}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" />
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.09a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.09a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.09a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" />
+          </svg>
+          <span className="settings-tab">Settings</span>
+        </button>
+      )}
+      {step === 0 && (
+        <button className="settings-btn no-drag" title="Back" onClick={() => setStep(1)}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <polyline points="15 18 9 12 15 6" />
+            <line x1="9" y1="12" x2="21" y2="12" />
+          </svg>
+          <span className="settings-tab">Back</span>
+        </button>
+      )}
+
       {step > 1 && (
-        <div className="stepper">
+        <div
+          className="stepper"
+          style={{ gridTemplateColumns: `repeat(${(isAudioOnly ? 4 : 5)}, 1fr)` }}
+        >
           {(isAudioOnly ? [2, 4, 5, 6] : [2, 3, 4, 5, 6]).map((i) => (
             <div key={i} className={`step-line ${step === i ? "active" : ""}`} />
           ))}

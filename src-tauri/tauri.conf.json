@@ -15,9 +15,10 @@
         "title": "xhMPEG",
         "width": 1200,
         "height": 700,
-        "resizable": false,
+        "resizable": true,
         "fullscreen": false,
-        "maximized": false
+        "maximized": false,
+        "decorations": false
       }
     ],
     "security": {
