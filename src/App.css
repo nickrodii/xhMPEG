@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Iceland&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Michroma&display=swap");
 @import url("https://fonts.googleapis.com/css2?family=Funnel+Display:wght@300..800&display=swap");
 
 :root {
@@ -248,11 +248,37 @@ button:active:not(:disabled) {
   align-self: center;
   padding: 12px 26px;
   border-radius: 12px;
-  background: linear-gradient(145deg, rgba(207, 211, 220, 0.96), rgba(140, 149, 162, 0.98));
-  color: #0f1115;
-  border: 1px solid rgba(207, 211, 220, 0.65);
-  box-shadow: 0 16px 32px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.45);
-  font-weight: 700;
+  background: linear-gradient(145deg, #9ae6b4, #68d391);
+  color: #ffffff;
+  border: 1px solid #68d391;
+  box-shadow: 0 16px 32px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.4);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+  position: relative;
+  overflow: hidden;
+}
+
+.run-cta::after {
+  content: "";
+  position: absolute;
+  inset: -40%;
+  background: linear-gradient(120deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.45), rgba(255, 255, 255, 0));
+  transform: translateX(-120%);
+  opacity: 0.7;
+  animation: run-shine 2.4s infinite;
+}
+
+@keyframes run-shine {
+  0% {
+    transform: translateX(-120%) rotate(25deg);
+  }
+  60% {
+    transform: translateX(140%) rotate(25deg);
+  }
+  100% {
+    transform: translateX(140%) rotate(25deg);
+  }
 }
 
 .browse-btn {
@@ -301,8 +327,30 @@ button:active:not(:disabled) {
 
 .output-row {
   display: grid;
-  gap: 14px;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: minmax(260px, 1fr) 180px;
+  gap: 26px 44px;
+  align-items: flex-start;
+  margin-top: 6px;
+}
+
+.output-path {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.output-format {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.output-file {
+  grid-column: 1 / span 2;
+  grid-row: 2;
+  grid-column: 1 / span 2;
+}
+
+.output-format select {
+  max-width: 160px;
 }
 
 .run-panel {
@@ -456,16 +504,16 @@ button:active:not(:disabled) {
 
 .welcome {
   align-items: flex-start;
-  gap: 8px;
+  gap: 32px;
 }
 
 .welcome-plain {
   max-width: 520px;
-  margin: 0 auto;
+  margin: 0 auto 0;
   padding: 32px 12px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 0px;
   text-align: center;
   align-items: center;
   color: var(--text);
@@ -474,16 +522,20 @@ button:active:not(:disabled) {
 }
 
 .welcome-subtitle {
-  margin: 2px 0 18px;
+  margin: 12px 0 18px;
   max-width: 520px;
   color: var(--muted);
   line-height: 1.5;
   font-size: 16px;
 }
 
+.welcome-plain .primary {
+  margin-top: 16px;
+}
+
 .brand-title {
-  font-family: "Iceland", "Segoe UI", system-ui, sans-serif;
-  font-size: 100px;
+  font-family: "Michroma", "Segoe UI", system-ui, sans-serif;
+  font-size: 84px;
   letter-spacing: 0.04em;
   margin: 14px;
   background: linear-gradient(90deg, #cfd3dc, #7f8796, #e7e9ee, #cfd3dc);
@@ -512,8 +564,8 @@ button:active:not(:disabled) {
   border: 1px solid var(--border);
   border-radius: 50%;
   color: var(--text);
-  width: 42px;
-  height: 42px;
+  width: 52px;
+  height: 52px;
   padding: 0;
   cursor: pointer;
   display: inline-flex;
@@ -536,7 +588,7 @@ button:active:not(:disabled) {
 
 .settings-btn .settings-tab {
   position: absolute;
-  left: 52px;
+  left: 64px;
   top: 50%;
   transform: translateY(-50%) translateX(-6px);
   padding: 6px 10px;
@@ -564,6 +616,116 @@ button:active:not(:disabled) {
   text-align: center;
 }
 
+.settings-heading {
+  font-family: "Michroma", "Segoe UI", system-ui, sans-serif;
+  font-size: 26px;
+  letter-spacing: 0.06em;
+  text-align: center;
+  color: var(--text);
+  margin: 0 0 12px;
+}
+
+.advanced-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(36, 42, 51, 0.92), rgba(20, 23, 30, 0.85));
+  box-shadow: 0 14px 26px rgba(0, 0, 0, 0.26), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  cursor: pointer;
+  color: var(--text);
+  transition: transform 0.15s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.advanced-toggle:hover {
+  border-color: rgba(207, 211, 220, 0.5);
+  box-shadow: 0 16px 30px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.advanced-toggle input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 32px;
+  height: 32px;
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  background: rgba(36, 42, 51, 0.9);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  position: relative;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease, transform 0.15s ease;
+}
+
+.advanced-toggle input[type="checkbox"]:active {
+  transform: translateY(1px);
+}
+
+.advanced-toggle input[type="checkbox"]:hover {
+  border-color: rgba(104, 211, 145, 0.6);
+}
+
+.advanced-toggle input[type="checkbox"]:checked {
+  border-color: rgba(104, 211, 145, 0.9);
+  background: linear-gradient(135deg, rgba(104, 211, 145, 0.4), rgba(58, 130, 92, 0.65));
+  box-shadow:
+    0 0 0 9px rgba(104, 211, 145, 0.14),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.08),
+    inset 0 0 12px rgba(104, 211, 145, 0.2);
+  animation: toggle-pop 0.25s ease;
+}
+
+.advanced-toggle input[type="checkbox"]:checked::before {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  border-radius: 7px;
+  background: radial-gradient(circle at 50% 50%, rgba(104, 211, 145, 0.25), transparent 80%);
+  box-shadow:
+    0 0 12px rgba(104, 211, 145, 0.35),
+    0 0 0 8px rgba(104, 211, 145, 0.08);
+  opacity: 0.8;
+  pointer-events: none;
+}
+
+.advanced-toggle input[type="checkbox"]:checked::after {
+  content: "";
+  position: absolute;
+  width: 12px;
+  height: 7px;
+  top: 8px;
+  left: 7px;
+  border: 3px solid #b4ffcd; /* solid, no transparency */
+  border-top: 0;
+  border-right: 0;
+  transform: rotate(-45deg);
+  border-radius: 1px;
+
+  /* NEW: solid backdrop for the checkmark stroke */
+  background-color: transparent; 
+  filter: none;
+  box-shadow: none; /* optional: prevents glowing distortion */
+}
+
+.advanced-toggle .label {
+  margin: 0;
+  letter-spacing: 0.04em;
+  font-size: 13px;
+  color: var(--text);
+}
+
+@keyframes toggle-pop {
+  0% {
+    transform: scale(0.92);
+  }
+  60% {
+    transform: scale(1.04);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
 .top-bar {
   position: fixed;
   top: 0;
@@ -585,6 +747,14 @@ button:active:not(:disabled) {
 }
 
 .top-bar.top-bar-welcome {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.top-bar.top-bar-settings {
   background: transparent;
   border: none;
   box-shadow: none;
@@ -687,8 +857,8 @@ button:active:not(:disabled) {
 }
 
 .done-title {
-  font-family: "Iceland", "Segoe UI", system-ui, sans-serif;
-  font-size: 96px;
+  font-family: "Michroma", "Segoe UI", system-ui, sans-serif;
+  font-size: 50px;
   margin: 4px 0 12px;
   background: linear-gradient(90deg, #cfd3dc, #7f8796, #e7e9ee, #cfd3dc);
   background-size: 200% 100%;

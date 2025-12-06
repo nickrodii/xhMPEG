@@ -874,7 +874,7 @@ function App() {
   return (
     <div className="app">
       <div
-        className={`top-bar drag-region ${step === 1 ? "top-bar-welcome" : ""}`}
+        className={`top-bar drag-region ${step === 1 ? "top-bar-welcome" : ""} ${step === 0 ? "top-bar-settings" : ""}`}
         data-tauri-drag-region
         onMouseDown={handleTopBarMouseDown}
       >
