@@ -51,13 +51,22 @@ const AUDIO_BITRATE_PRESETS: NumericPreset[] = [
 ];
 
 const FORMAT_OPTIONS: FormatOption[] = [
-  { label: "MP4 (H.264 + AAC)", value: "mp4", ext: "mp4" },
-  { label: "MKV (H.264 + AAC)", value: "mkv", ext: "mkv" },
+  { label: "MP4", value: "mp4", ext: "mp4" },
+  { label: "MKV", value: "mkv", ext: "mkv" },
+  { label: "MOV", value: "mov", ext: "mov" },
+  { label: "WebM", value: "webm", ext: "webm" },
+  { label: "AVI", value: "avi", ext: "avi" },
+  { label: "FLV", value: "flv", ext: "flv" },
+  { label: "Animated GIF", value: "gif", ext: "gif" },
 ];
 
 const AUDIO_FORMAT_OPTIONS: FormatOption[] = [
   { label: "MP3", value: "mp3", ext: "mp3" },
   { label: "WAV", value: "wav", ext: "wav" },
+  { label: "FLAC", value: "flac", ext: "flac" },
+  { label: "AAC (M4A)", value: "m4a", ext: "m4a" },
+  { label: "OGG", value: "ogg", ext: "ogg" },
+  { label: "Opus", value: "opus", ext: "opus" },
 ];
 
 const SETTINGS_STORE_FILE = "settings.json";
@@ -138,6 +147,7 @@ function buildResolutionOptions(sourceWidth: number, sourceHeight: number) {
 }
 function App() {
   const [selectedFile, setSelectedFile] = useState<string>("");
+  const [advancedMode, setAdvancedMode] = useState<boolean>(false);
   const [mediaInfo, setMediaInfo] = useState<MediaInfo | null>(null);
   const [startMs, setStartMs] = useState<number>(0);
   const [endMs, setEndMs] = useState<number>(0);
@@ -153,7 +163,7 @@ function App() {
   const [resolutionOptions, setResolutionOptions] = useState<
     { label: string; value: string; width?: number; height?: number }[]
   >([]);
-  const [, setSourceResolution] = useState<{ width: number; height: number } | null>(null);
+  const [sourceResolution, setSourceResolution] = useState<{ width: number; height: number } | null>(null);
 
   const [fpsPreset, setFpsPreset] = useState<string>("source");
   const [customFps, setCustomFps] = useState<string>("");
@@ -275,11 +285,64 @@ function App() {
     return formatOptions.find((f) => f.value === format) ?? formatOptions[0];
   }, [format, formatOptions]);
 
+  const formatSizeMultiplier = useMemo(() => {
+    if (isAudioOnly) {
+      switch (currentFormat.value) {
+        case "wav":
+          return 3.8; // approximate PCM overhead relative to typical compressed kbps
+        case "flac":
+          return 0.7;
+        case "opus":
+          return 0.7;
+        case "ogg":
+          return 0.85;
+        case "m4a":
+          return 0.9;
+        default:
+          return 1;
+      }
+    }
+    switch (currentFormat.value) {
+      case "webm":
+        return 0.85;
+      case "mkv":
+        return 0.95;
+      case "mov":
+        return 1.05;
+      case "avi":
+        return 1.15;
+      case "flv":
+        return 1.1;
+      case "gif":
+        return 2.5; // inefficient palette animation
+      default:
+        return 1;
+    }
+  }, [currentFormat.value, isAudioOnly]);
+
   useEffect(() => {
     if (currentFormat?.value !== format) {
       setFormat(currentFormat.value);
     }
   }, [currentFormat, format]);
+
+  const resolutionScale = useMemo(() => {
+    if (
+      !isAudioOnly &&
+      sourceResolution &&
+      resolution.width &&
+      resolution.height &&
+      sourceResolution.width > 0 &&
+      sourceResolution.height > 0
+    ) {
+      const baseArea = sourceResolution.width * sourceResolution.height;
+      const targetArea = resolution.width * resolution.height;
+      const scale = targetArea / baseArea;
+      // Clamp to avoid extreme swings from tiny or huge values.
+      return Math.min(1.5, Math.max(0.2, scale));
+    }
+    return 1;
+  }, [isAudioOnly, resolution.height, resolution.width, sourceResolution]);
 
   const finalOutputPath = useMemo(() => {
     const base = outputFilename.replace(/\.[^/.]+$/, "") || "output";
@@ -290,16 +353,16 @@ function App() {
 
   const estimatedSizeText = useMemo(() => {
     if (!clipLengthSeconds) return "--";
-    const totalKbps = (effectiveVideoBitrate ?? 0) + (audioBitrateValue ?? 0);
+    const totalKbps = (effectiveVideoBitrate ?? 0) * resolutionScale + (audioBitrateValue ?? 0);
     if (!totalKbps) return "--";
-    const bytes = (totalKbps * 1000 * clipLengthSeconds) / 8;
+    const bytes = (totalKbps * formatSizeMultiplier * 1000 * clipLengthSeconds) / 8;
     const mb = bytes / (1024 * 1024);
     if (mb < 1024) {
       return `${mb.toFixed(1)} MB`;
     }
     const gb = mb / 1024;
     return `${gb.toFixed(2)} GB`;
-  }, [clipLengthSeconds, videoBitrateValue, audioBitrateValue]);
+  }, [clipLengthSeconds, videoBitrateValue, audioBitrateValue, formatSizeMultiplier, effectiveVideoBitrate, resolutionScale]);
 
   const handlePointerMove = (clientX: number) => {
     if (!dragging || !sliderRef.current || durationMs <= 0) return;
@@ -662,11 +725,6 @@ function App() {
           </select>
         </div>
       </div>
-      <div className="run-panel">
-        <button className="run-cta center" onClick={runConversion} disabled={!mediaInfo || conversionRunning}>
-          {conversionRunning ? "Converting..." : "Run"}
-        </button>
-      </div>
     </section>
   );
 
@@ -715,6 +773,23 @@ function App() {
     </section>
   );
 
+  const renderAdvancedPage = () => (
+    <>
+      {renderTrimPage()}
+      {renderQualityPage()}
+      {renderOutputPage()}
+      <div className="wizard-nav" style={{ justifyContent: "flex-end" }}>
+        <button
+          className="run-cta"
+          onClick={runConversion}
+          disabled={!mediaInfo || conversionRunning}
+        >
+          {conversionRunning ? "Converting..." : "Run"}
+        </button>
+      </div>
+    </>
+  );
+
   const renderWelcome = () => (
     <section className="welcome-plain">
       <h1 className="brand-title">xhMPEG</h1>
@@ -748,13 +823,25 @@ function App() {
   );
 
   const renderSettingsPage = () => (
-    <section className="panel settings-panel">
-      <h2>Settings</h2>
-      <p className="muted">Settings page (coming soon).</p>
-    </section>
+    <>
+      <h2 className="settings-heading">Settings</h2>
+      <section className="panel settings-panel">
+        <label className="advanced-toggle">
+          <input
+            type="checkbox"
+            checked={advancedMode}
+            onChange={(e) => setAdvancedMode(e.target.checked)}
+          />
+          <span className="label">Advanced Mode</span>
+        </label>
+      </section>
+    </>
   );
 
   const renderStepContent = () => {
+    if (advancedMode && mediaInfo) {
+      return renderAdvancedPage();
+    }
     switch (step) {
       case 0:
         return renderSettingsPage();
@@ -780,6 +867,9 @@ function App() {
     ((step === 2 && durationMs > 0) ||
       (!isAudioOnly && step === 3) ||
       (step === 4 && outputDir && outputFilename));
+
+  const showWizardNav = !(advancedMode && mediaInfo);
+  const showStepper = showWizardNav && step > 1;
 
   return (
     <div className="app">
@@ -858,7 +948,7 @@ function App() {
         </button>
       )}
 
-      {step > 1 && (
+      {showStepper && (
         <div
           className="stepper"
           style={{ gridTemplateColumns: `repeat(${(isAudioOnly ? 4 : 5)}, 1fr)` }}
@@ -873,7 +963,7 @@ function App() {
         {renderStepContent()}
       </div>
 
-      {step >= 2 && step <= 4 && (
+      {showWizardNav && step >= 2 && step <= 4 && (
         <div className="wizard-nav">
           {step > 1 && step <= 4 && (
             <button
@@ -904,6 +994,15 @@ function App() {
               disabled={!canGoNext}
             >
               Next
+            </button>
+          )}
+          {step === 4 && (
+            <button
+              className="run-cta"
+              onClick={runConversion}
+              disabled={!mediaInfo || conversionRunning}
+            >
+              {conversionRunning ? "Converting..." : "Run"}
             </button>
           )}
         </div>
