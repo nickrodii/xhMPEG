@@ -25,6 +25,8 @@ pub struct ConversionOptions {
     audio_bitrate_kbps: Option<u64>,
     format: Option<String>,
     is_audio_only: bool,
+    video_codec: Option<String>,
+    audio_codec: Option<String>,
 }
 
 #[tauri::command]
@@ -155,6 +157,38 @@ async fn run_conversion(options: ConversionOptions) -> Result<(), String> {
     Ok(())
 }
 
+fn video_codecs_for_format(fmt: &str) -> Vec<&'static str> {
+    match fmt {
+        "mp4" => vec!["libx264", "libx265"],
+        "mov" => vec!["libx264", "libx265", "prores_ks", "mjpeg"],
+        "mkv" => vec!["libx264", "libx265", "libvpx-vp9", "prores_ks", "mjpeg"],
+        "webm" => vec!["libvpx-vp9"],
+        "avi" => vec!["libx264", "mjpeg"],
+        "flv" => vec!["libx264"],
+        "gif" => vec!["gif"],
+        _ => vec![],
+    }
+}
+
+fn audio_codecs_for_format(fmt: &str) -> Vec<&'static str> {
+    match fmt {
+        "mp4" => vec!["aac", "libmp3lame"],
+        "mov" => vec!["aac"],
+        "mkv" => vec!["aac", "libopus", "libvorbis", "libmp3lame", "flac"],
+        "webm" => vec!["libopus", "libvorbis"],
+        "avi" => vec!["libmp3lame"],
+        "flv" => vec!["aac"],
+        "gif" => vec![],
+        "mp3" => vec!["libmp3lame"],
+        "wav" => vec!["pcm_s16le"],
+        "flac" => vec!["flac"],
+        "m4a" | "aac" => vec!["aac"],
+        "ogg" => vec!["libvorbis"],
+        "opus" => vec!["libopus"],
+        _ => vec![],
+    }
+}
+
 fn build_ffmpeg_args(options: &ConversionOptions) -> Result<Vec<String>, String> {
     let mut args: Vec<String> = Vec::new();
     args.push("-y".to_string());
@@ -175,16 +209,19 @@ fn build_ffmpeg_args(options: &ConversionOptions) -> Result<Vec<String>, String>
     args.push(format!("{duration_secs:.3}"));
 
     if options.is_audio_only {
-        let audio_codec = match format {
-            "mp3" => "libmp3lame",
-            "wav" => "pcm_s16le",
-            "flac" => "flac",
-            "ogg" => "libvorbis",
-            "opus" => "libopus",
-            "m4a" | "aac" => "aac",
-            other => return Err(format!("Unsupported audio format: {other}")),
+        let allowed_audio = audio_codecs_for_format(format);
+        if allowed_audio.is_empty() {
+            return Err(format!("No audio codecs available for format: {format}"));
+        }
+        let audio_codec = if let Some(ref user) = options.audio_codec {
+            if allowed_audio.iter().any(|c| c == user) {
+                user.as_str()
+            } else {
+                return Err(format!("Audio codec {user} not allowed for format {format}"));
+            }
+        } else {
+            allowed_audio[0]
         };
-
         args.push("-vn".to_string());
         args.push("-c:a".to_string());
         args.push(audio_codec.to_string());
@@ -205,11 +242,45 @@ fn build_ffmpeg_args(options: &ConversionOptions) -> Result<Vec<String>, String>
             args.push(filters.join(","));
         }
 
-        let mut video_codec = "libx264";
-        let mut audio_codec: Option<&str> = Some("aac");
+        let allowed_video = video_codecs_for_format(format);
+        if allowed_video.is_empty() {
+            return Err(format!("No video codecs available for format: {format}"));
+        }
+        let mut video_codec = if let Some(ref user) = options.video_codec {
+            if allowed_video.iter().any(|c| c == user) {
+                user.as_str()
+            } else {
+                return Err(format!("Video codec {user} not allowed for format {format}"));
+            }
+        } else {
+            allowed_video[0]
+        };
+
+        let mut audio_codec: Option<&str>;
         let mut add_x264_preset = true;
         let mut pix_fmt: Option<&str> = Some("yuv420p");
         let mut extra: Vec<String> = Vec::new();
+
+        let allowed_audio = audio_codecs_for_format(format);
+        audio_codec = if let Some(ref user) = options.audio_codec {
+            if allowed_audio.iter().any(|c| c == user) {
+                Some(user.as_str())
+            } else if !allowed_audio.is_empty() {
+                Some(allowed_audio[0])
+            } else {
+                None
+            }
+        } else {
+            allowed_audio.first().copied()
+        };
+
+        if video_codec == "prores_ks" {
+            pix_fmt = Some("yuv422p10le");
+            extra.push("-profile:v".to_string());
+            extra.push("3".to_string()); // standard quality
+        } else if video_codec == "mjpeg" {
+            pix_fmt = Some("yuvj422p");
+        }
 
         match format {
             "mp4" | "mov" => {

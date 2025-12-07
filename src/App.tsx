@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir, openUrl } from "@tauri-apps/plugin-opener";
@@ -69,6 +69,32 @@ const AUDIO_FORMAT_OPTIONS: FormatOption[] = [
   { label: "OGG", value: "ogg", ext: "ogg" },
   { label: "Opus", value: "opus", ext: "opus" },
 ];
+
+const VIDEO_CODECS_BY_FORMAT: Record<string, string[]> = {
+  mp4: ["libx264", "libx265"],
+  mov: ["libx264", "libx265", "prores_ks", "mjpeg"],
+  mkv: ["libx264", "libx265", "libvpx-vp9", "prores_ks", "mjpeg"],
+  webm: ["libvpx-vp9"],
+  avi: ["libx264", "mjpeg"],
+  flv: ["libx264"],
+  gif: ["gif"],
+};
+
+const AUDIO_CODECS_BY_FORMAT: Record<string, string[]> = {
+  mp4: ["aac", "libmp3lame"],
+  mov: ["aac"],
+  mkv: ["aac", "libopus", "libvorbis", "libmp3lame", "flac"],
+  webm: ["libopus", "libvorbis"],
+  avi: ["libmp3lame"],
+  flv: ["aac"],
+  gif: [],
+  mp3: ["libmp3lame"],
+  wav: ["pcm_s16le"],
+  flac: ["flac"],
+  m4a: ["aac"],
+  ogg: ["libvorbis"],
+  opus: ["libopus"],
+};
 
 const SETTINGS_STORE_FILE = "settings.json";
 
@@ -158,6 +184,7 @@ function App() {
   const [lastOutputPath, setLastOutputPath] = useState<string>("");
   const [step, setStep] = useState<number>(1);
   const [autoOpenExit, setAutoOpenExit] = useState<boolean>(false);
+  const [enableCodecSelection, setEnableCodecSelection] = useState<boolean>(false);
 
   const [resolutionPreset, setResolutionPreset] = useState<string>("source");
   const [customWidth, setCustomWidth] = useState<string>("");
@@ -182,6 +209,8 @@ function App() {
   const [outputDir, setOutputDir] = useState<string>("");
   const [outputFilename, setOutputFilename] = useState<string>("output");
   const [format, setFormat] = useState<string>("mp4");
+  const [forceAudioOnly, setForceAudioOnly] = useState<boolean>(false);
+  const [selectedCodec, setSelectedCodec] = useState<string>("");
 
   const storeRef = useRef<Store | null>(null);
   const sliderRef = useRef<HTMLDivElement | null>(null);
@@ -204,6 +233,8 @@ function App() {
         if (typeof savedAuto === "boolean" && !cancelled) setAutoOpenExit(savedAuto);
         const savedAdvanced = await store.get<boolean>("advancedMode");
         if (typeof savedAdvanced === "boolean" && !cancelled) setAdvancedMode(savedAdvanced);
+        const savedCodecSetting = await store.get<boolean>("enableCodecSelection");
+        if (typeof savedCodecSetting === "boolean" && !cancelled) setEnableCodecSelection(savedCodecSetting);
       } catch (err) {
         console.error("Failed to load store", err);
       }
@@ -214,7 +245,16 @@ function App() {
   }, []);
 
   const durationMs = mediaInfo ? Math.round(mediaInfo.duration_seconds * 1000) : 0;
-  const isAudioOnly = mediaInfo ? !mediaInfo.has_video : false;
+  const hasVideoSource = mediaInfo ? mediaInfo.has_video : false;
+  const isAudioOnly = !hasVideoSource || forceAudioOnly;
+  const wizardIsAudioOnly = !hasVideoSource;
+
+  const getAvailableCodecs = useCallback(
+    (fmt: string, audioOnly: boolean) => {
+      return audioOnly ? AUDIO_CODECS_BY_FORMAT[fmt] ?? [] : VIDEO_CODECS_BY_FORMAT[fmt] ?? [];
+    },
+    []
+  );
 
   const clipLengthSeconds = useMemo(() => {
     return Math.max(0, (endMs - startMs) / 1000);
@@ -375,6 +415,8 @@ function App() {
     return `${gb.toFixed(2)} GB`;
   }, [clipLengthSeconds, videoBitrateValue, audioBitrateValue, formatSizeMultiplier, effectiveVideoBitrate, resolutionScale]);
 
+  const codecOptions = useMemo(() => getAvailableCodecs(currentFormat.value, isAudioOnly), [currentFormat.value, getAvailableCodecs, isAudioOnly]);
+
   const handlePointerMove = (clientX: number) => {
     if (!dragging || !sliderRef.current || durationMs <= 0) return;
     const rect = sliderRef.current.getBoundingClientRect();
@@ -454,6 +496,7 @@ function App() {
       const base = baseNameNoExt(fileNameFromPath(selected)) || "output";
       setOutputFilename(`${base}_converted`);
       setFormat(info.has_video ? "mp4" : "mp3");
+      setForceAudioOnly(!info.has_video);
       if (!outputDir) {
         setOutputDir(parentDir(selected));
       }
@@ -515,6 +558,34 @@ function App() {
     }
   };
 
+  const updateEnableCodecSelection = async (value: boolean) => {
+    setEnableCodecSelection(value);
+    if (!value) {
+      setSelectedCodec("");
+    }
+    if (storeRef.current) {
+      try {
+        await storeRef.current.set("enableCodecSelection", value);
+        await storeRef.current.save();
+      } catch (err) {
+        console.error("Failed to save codec selection setting", err);
+      }
+    }
+  };
+
+  const updateForceAudioOnly = (value: boolean) => {
+    setForceAudioOnly(value);
+    if (value) {
+      if (!AUDIO_FORMAT_OPTIONS.some((opt) => opt.value === format)) {
+        setFormat(AUDIO_FORMAT_OPTIONS[0].value);
+      }
+    } else if (mediaInfo?.has_video) {
+      if (!FORMAT_OPTIONS.some((opt) => opt.value === format)) {
+        setFormat("mp4");
+      }
+    }
+  };
+
   const autoOpenAndExitIfEnabled = async (outputPath: string) => {
     if (!autoOpenExit) return;
     try {
@@ -528,6 +599,19 @@ function App() {
       console.error("Failed to exit after auto-open", err);
     }
   };
+
+  useEffect(() => {
+    if (!enableCodecSelection) {
+      setSelectedCodec("");
+      return;
+    }
+    const list = getAvailableCodecs(format, isAudioOnly);
+    if (!list.length) {
+      setSelectedCodec("");
+    } else if (!list.includes(selectedCodec)) {
+      setSelectedCodec(list[0]);
+    }
+  }, [enableCodecSelection, format, getAvailableCodecs, isAudioOnly, selectedCodec]);
 
   const runConversion = async () => {
     if (!selectedFile || !mediaInfo) {
@@ -559,6 +643,8 @@ function App() {
           audio_bitrate_kbps: audioBitrateValue ?? null,
           format: currentFormat.value,
           is_audio_only: isAudioOnly,
+          video_codec: enableCodecSelection && !isAudioOnly && selectedCodec ? selectedCodec : null,
+          audio_codec: enableCodecSelection && isAudioOnly && selectedCodec ? selectedCodec : null,
         },
       });
       setStatus("");
@@ -669,7 +755,7 @@ function App() {
             className={resolutionPreset === "custom" ? "custom-select" : ""}
             value={resolutionPreset}
             onChange={(e) => setResolutionPreset(e.target.value)}
-            disabled={!mediaInfo}
+            disabled={!mediaInfo || isAudioOnly || !mediaInfo?.has_video}
           >
             {[...resolutionOptions, { label: "Custom", value: "custom" }].map((preset) => (
               <option key={preset.value} value={preset.value}>
@@ -702,7 +788,7 @@ function App() {
             className={fpsPreset === "custom" ? "custom-select" : ""}
             value={fpsPreset}
             onChange={(e) => setFpsPreset(e.target.value)}
-            disabled={!mediaInfo}
+            disabled={!mediaInfo || isAudioOnly || !mediaInfo?.has_video}
           >
             {fpsOptions.map((preset) => (
               <option key={preset.value} value={preset.value}>
@@ -726,7 +812,7 @@ function App() {
             className={videoBitratePreset === "custom" ? "custom-select" : ""}
             value={videoBitratePreset}
             onChange={(e) => setVideoBitratePreset(e.target.value)}
-            disabled={!mediaInfo}
+            disabled={!mediaInfo || isAudioOnly || !mediaInfo?.has_video}
           >
             {videoBitrateOptions.map((preset) => (
               <option key={preset.value} value={preset.value}>
@@ -744,6 +830,18 @@ function App() {
           )}
         </div>
       </div>
+      {mediaInfo && mediaInfo.has_video && (
+        <div className="quality-audio-toggle">
+          <label className="advanced-toggle small-toggle">
+            <input
+              type="checkbox"
+              checked={forceAudioOnly}
+              onChange={(e) => updateForceAudioOnly(e.target.checked)}
+            />
+            <span className="label">Extract audio only</span>
+          </label>
+        </div>
+      )}
     </section>
   );
 
@@ -757,45 +855,61 @@ function App() {
           <p className="label">Folder</p>
           <div className="inline-fields">
             <input type="text" value={outputDir} readOnly placeholder="Choose output folder" />
-            <button className="browse-btn" onClick={pickOutputDir} aria-label="Browse for folder">
-              <svg
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-              >
-                <path d="M3 6h6l2 2h10v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />
-                <path d="M3 6V4a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v2" />
-              </svg>
-            </button>
           </div>
         </div>
-        <div className="output-file">
-          <p className="label">Filename</p>
-          <div className="inline-fields">
-            <input
-              type="text"
-              value={outputFilename}
-              onChange={(e) => setOutputFilename(e.target.value.replace(/\.[^/.]+$/, ""))}
-              placeholder="output"
-            />
-            <span className="suffix">.{currentFormat.ext}</span>
-          </div>
-            </div>
-            <div className="output-format compact-format">
-              <p className="label">Format</p>
-              <select value={format} onChange={(e) => setFormat(e.target.value)}>
-                {formatOptions.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
+        <button className="browse-btn output-browse" onClick={pickOutputDir} aria-label="Browse for folder">
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M3 6h6l2 2h10v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />
+            <path d="M3 6V4a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v2" />
+          </svg>
+        </button>
+        <div className="output-format">
+          <p className="label">Format</p>
+          <select value={format} onChange={(e) => setFormat(e.target.value)}>
+            {formatOptions.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
           </select>
+        </div>
+        {enableCodecSelection && (
+          <div className="output-codec inline-codec">
+            <p className="label">Codec</p>
+            <select
+              value={selectedCodec}
+              onChange={(e) => setSelectedCodec(e.target.value)}
+              disabled={!mediaInfo || codecOptions.length <= 1}
+            >
+              {codecOptions.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+      </div>
+      <div className="output-file">
+        <p className="label">Filename</p>
+        <div className="inline-fields">
+          <input
+            type="text"
+            value={outputFilename}
+            onChange={(e) => setOutputFilename(e.target.value.replace(/\.[^/.]+$/, ""))}
+            placeholder="output"
+          />
+          <span className="suffix">.{currentFormat.ext}</span>
         </div>
       </div>
     </section>
@@ -862,45 +976,35 @@ function App() {
     return (
       <div className="advanced-layout">
         <div className="advanced-grid-2">
-          <section className="panel compact-panel">
+          <section className="panel compact-panel advanced-output-panel">
             <div className="advanced-output-row">
-            <div className="output-path">
-              <p className="label">Folder</p>
-              <div className="inline-fields">
-                <input
-                  type="text"
-                  className="output-path-input"
-                  value={outputDir}
-                  readOnly
-                  placeholder="Choose output folder"
-                />
-                <button className="browse-btn" onClick={pickOutputDir} aria-label="Browse for folder">
-                  <svg
-                    width="18"
-                    height="18"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    aria-hidden="true"
-                  >
-                    <path d="M3 6h6l2 2h10v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />
-                    <path d="M3 6V4a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v2" />
-                  </svg>
-                </button>
-              </div>
-            </div>
-              <div className="output-format">
-                <p className="label">Format</p>
-                <select value={format} onChange={(e) => setFormat(e.target.value)}>
-                  {formatOptions.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
+              <div className="output-path">
+                <p className="label">Folder</p>
+                <div className="inline-fields">
+                  <input
+                    type="text"
+                    className="output-path-input"
+                    value={outputDir}
+                    readOnly
+                    placeholder="Choose output folder"
+                  />
+                  <button className="browse-btn" onClick={pickOutputDir} aria-label="Browse for folder">
+                    <svg
+                      width="18"
+                      height="18"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path d="M3 6h6l2 2h10v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />
+                      <path d="M3 6V4a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v2" />
+                    </svg>
+                  </button>
+                </div>
               </div>
             </div>
             <div className="output-file advanced-filename">
@@ -916,7 +1020,38 @@ function App() {
             </div>
           </section>
 
-          <section className="panel compact-panel">
+          <section className="panel compact-panel advanced-format-panel">
+            <div className="format-codec-row">
+              <div className="output-format">
+                <p className="label">Format</p>
+                <select value={format} onChange={(e) => setFormat(e.target.value)}>
+                  {formatOptions.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {enableCodecSelection && (
+                <div className="output-codec">
+                  <p className="label">Codec</p>
+                  <select
+                    value={selectedCodec}
+                    onChange={(e) => setSelectedCodec(e.target.value)}
+                    disabled={!mediaInfo || codecOptions.length <= 1}
+                  >
+                    {codecOptions.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+          </section>
+
+          <section className="panel compact-panel trim-short advanced-trim-panel">
             <div className="trim-readout compact-readout">
               <div>
                 <p className="label">Start</p>
@@ -970,8 +1105,8 @@ function App() {
             </div>
           </section>
 
-          {!isAudioOnly && (
-          <section className="panel compact-panel quality-wide">
+          {mediaInfo?.has_video && (
+            <section className="panel compact-panel quality-wide">
               <div className="advanced-inline">
                 <div className="grow">
                   <p className="label">Resolution</p>
@@ -979,7 +1114,7 @@ function App() {
                     className={resolutionPreset === "custom" ? "custom-select" : ""}
                     value={resolutionPreset}
                     onChange={(e) => setResolutionPreset(e.target.value)}
-                    disabled={!mediaInfo}
+                    disabled={!mediaInfo || isAudioOnly}
                   >
                     {[...resolutionOptions, { label: "Custom", value: "custom" }].map((preset) => (
                       <option key={preset.value} value={preset.value}>
@@ -1011,7 +1146,7 @@ function App() {
                     className={fpsPreset === "custom" ? "custom-select" : ""}
                     value={fpsPreset}
                     onChange={(e) => setFpsPreset(e.target.value)}
-                    disabled={!mediaInfo}
+                    disabled={!mediaInfo || isAudioOnly}
                   >
                     {fpsOptions.map((preset) => (
                       <option key={preset.value} value={preset.value}>
@@ -1034,7 +1169,7 @@ function App() {
                     className={videoBitratePreset === "custom" ? "custom-select" : ""}
                     value={videoBitratePreset}
                     onChange={(e) => setVideoBitratePreset(e.target.value)}
-                    disabled={!mediaInfo}
+                    disabled={!mediaInfo || isAudioOnly}
                   >
                     {videoBitrateOptions.map((preset) => (
                       <option key={preset.value} value={preset.value}>
@@ -1057,6 +1192,18 @@ function App() {
         </div>
 
         <div className="advanced-actions">
+          {mediaInfo?.has_video && (
+            <div className="advanced-inline" style={{ marginRight: "auto" }}>
+              <label className="advanced-toggle small-toggle">
+                <input
+                  type="checkbox"
+                  checked={forceAudioOnly}
+                  onChange={(e) => updateForceAudioOnly(e.target.checked)}
+                />
+                <span className="label">Extract audio only</span>
+              </label>
+            </div>
+          )}
           <div className="advanced-buttons">
             <button
               className="ghost"
@@ -1135,6 +1282,14 @@ function App() {
           />
           <span className="label">Open location and exit after conversion</span>
         </label>
+        <label className="advanced-toggle">
+          <input
+            type="checkbox"
+            checked={enableCodecSelection}
+            onChange={(e) => updateEnableCodecSelection(e.target.checked)}
+          />
+          <span className="label">Allow codec selection</span>
+        </label>
       </section>
     </>
   );
@@ -1163,9 +1318,7 @@ function App() {
 
   const canGoNext =
     mediaInfo &&
-    ((step === 2 && durationMs > 0) ||
-      (!isAudioOnly && step === 3) ||
-      (step === 4 && outputDir && outputFilename));
+    ((step === 2 && durationMs > 0) || step === 3 || (step === 4 && outputDir && outputFilename));
 
   const showWizardNav = !(advancedMode && mediaInfo);
   const showStepper = showWizardNav && step > 1;
@@ -1175,7 +1328,7 @@ function App() {
   return (
     <div className={`app ${isAdvancedView ? "advanced-view" : ""}`}>
       <div
-        className={`top-bar drag-region ${step === 1 ? "top-bar-welcome" : ""} ${step === 0 ? "top-bar-settings" : ""}`}
+          className={`top-bar drag-region ${step === 1 ? "top-bar-welcome" : ""} ${step === 0 ? "top-bar-settings" : ""}`}
         data-tauri-drag-region
         onMouseDown={handleTopBarMouseDown}
       >
@@ -1267,9 +1420,9 @@ function App() {
       )}
       {step === 0 && (
         <button className="settings-btn no-drag" title="Back" onClick={() => setStep(1)}>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <polyline points="15 18 9 12 15 6" />
-            <line x1="9" y1="12" x2="21" y2="12" />
+          <svg width="22" height="18" viewBox="0 0 26 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <polyline points="16 18 8 12 16 6" />
+            <line x1="8" y1="12" x2="24" y2="12" />
           </svg>
           <span className="settings-tab">Back</span>
         </button>
@@ -1278,9 +1431,9 @@ function App() {
       {showStepper && (
         <div
           className="stepper"
-          style={{ gridTemplateColumns: `repeat(${(isAudioOnly ? 4 : 5)}, 1fr)` }}
+          style={{ gridTemplateColumns: `repeat(${(wizardIsAudioOnly ? 4 : 5)}, 1fr)` }}
         >
-          {(isAudioOnly ? [2, 4, 5, 6] : [2, 3, 4, 5, 6]).map((i) => (
+          {(wizardIsAudioOnly ? [2, 4, 5, 6] : [2, 3, 4, 5, 6]).map((i) => (
             <div key={i} className={`step-line ${step === i ? "active" : ""}`} />
           ))}
         </div>
@@ -1296,7 +1449,7 @@ function App() {
             <button
               className="ghost"
               onClick={() => {
-                if (isAudioOnly && step === 4) {
+                if (wizardIsAudioOnly && step === 4) {
                   setStep(2);
                 } else if (step > 1) {
                   setStep(step - 1);
@@ -1312,7 +1465,7 @@ function App() {
             <button
               className="primary"
               onClick={() => {
-                if (isAudioOnly && step === 2) {
+                if (wizardIsAudioOnly && step === 2) {
                   setStep(4);
                 } else {
                   setStep(step + 1);

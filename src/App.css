@@ -50,12 +50,20 @@ body {
   color: var(--text);
   font-family: "Tomorrow", "Funnel Display", system-ui, -apple-system, sans-serif;
   line-height: 1.5;
+  user-select: none;
+}
+
+input,
+select,
+textarea,
+button {
+  user-select: text;
 }
 
 .app {
   max-width: 980px;
   margin: 0 auto;
-  padding: 96px 20px 48px;
+  padding: 48px 20px 32px;
   min-height: 100vh;
   display: flex;
   flex-direction: column;
@@ -64,8 +72,11 @@ body {
 }
 
 .app.advanced-view {
-  padding-top: 80px;
+  padding: 90px 20px 20px;
   align-items: center;
+  gap: 12px;
+  min-height: 560px;
+  overflow: hidden;
 }
 
 .stepper {
@@ -342,31 +353,61 @@ button:active:not(:disabled) {
 }
 
 .output-row {
-  display: grid;
-  grid-template-columns: minmax(260px, 1fr) 180px;
-  gap: 26px 44px;
-  align-items: flex-start;
-  margin-top: 6px;
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  flex-wrap: nowrap;
+  justify-content: flex-start;
+  margin-top: 10px;
 }
 
 .output-path {
-  grid-column: 1;
-  grid-row: 1;
+  flex: 1 1 260px;
 }
 
 .output-format {
-  grid-column: 2;
-  grid-row: 1;
+  flex: 0 0 130px;
+  order: 2;
 }
 
 .output-file {
-  grid-column: 1 / span 2;
-  grid-row: 2;
-  grid-column: 1 / span 2;
+  flex: 1 1 100%;
+  margin-top: 12px;
+  width: 100%;
 }
 
 .output-format select {
-  max-width: 100px;
+  min-width: 110px;
+  max-width: 150px;
+}
+
+.output-browse {
+  align-self: flex-end;
+  height: 44px;
+  width: 44px;
+  padding: 10px;
+  min-width: 44px;
+  order: 1;
+}
+
+.inline-codec {
+  flex: 0 0 130px;
+  order: 3;
+}
+
+.output-file .inline-fields {
+  width: 100%;
+}
+
+.output-file .inline-fields input {
+  width: 100%;
+  min-width: 0;
+}
+
+@media (max-width: 960px) {
+  .output-row {
+    flex-wrap: wrap;
+  }
 }
 
 .compact-format select {
@@ -723,36 +764,92 @@ button:active:not(:disabled) {
 .advanced-layout {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  margin: 12px auto 0;
+  gap: 6px;
+  margin: 0 auto;
   width: 100%;
   max-width: 1100px;
+  transform: translateY(70px) scale(0.88);
+  transform-origin: top center;
 }
 
 .advanced-grid-2 {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
+  grid-template-areas:
+    "output format"
+    "output trim"
+    "quality quality";
+  gap: 10px;
   width: 100%;
 }
 
+.advanced-output-panel {
+  grid-area: output;
+}
+
+.advanced-format-panel {
+  grid-area: format;
+}
+
+.advanced-trim-panel {
+  grid-area: trim;
+}
+
 .quality-wide {
-  grid-column: 1 / -1;
+  grid-area: quality;
 }
 
 @media (max-width: 960px) {
   .advanced-grid-2 {
     grid-template-columns: 1fr;
+    grid-template-areas:
+      "output"
+      "format"
+      "trim"
+      "quality";
   }
 
   .quality-wide {
-    grid-column: auto;
+    grid-area: quality;
   }
 }
 
 .compact-panel {
-  padding: 14px 16px;
+  padding: 10px 12px;
   gap: 10px;
+}
+
+.trim-short {
+  padding: 10px 12px;
+  min-height: 110px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+}
+
+.trim-short .trim-slider {
+  height: 18px;
+  margin-top: 4px;
+}
+
+.format-codec-row {
+  display: flex;
+  gap: 12px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+
+.advanced-format-panel .output-format {
+  flex: 1 1 180px;
+}
+
+.advanced-format-panel .output-codec {
+  flex: 0 0 auto;
+}
+
+.advanced-format-panel .output-codec select {
+  width: 120px;
 }
 
 .advanced-grid {
@@ -786,7 +883,7 @@ button:active:not(:disabled) {
 }
 
 .output-path-input {
-  max-width: 520px;
+  max-width: 100%;
   width: 100%;
 }
 
@@ -814,6 +911,7 @@ button:active:not(:disabled) {
   justify-content: flex-end;
   gap: 10px;
   align-items: center;
+  margin-top: 4px;
 }
 
 .advanced-actions.with-est {
@@ -850,6 +948,12 @@ button:active:not(:disabled) {
   color: var(--text);
   transition: transform 0.15s ease, box-shadow 0.2s ease, border-color 0.2s ease;
   font-family: "Tomorrow", "Segoe UI", system-ui, sans-serif;
+}
+
+.advanced-toggle.small-toggle {
+  width: auto;
+  padding: 10px 12px;
+  gap: 10px;
 }
 
 .advanced-toggle:hover {
@@ -1083,6 +1187,12 @@ button:active:not(:disabled) {
 .quality-grid > div {
   flex: 1 1 0;
   min-width: 240px;
+}
+
+.quality-audio-toggle {
+  display: flex;
+  justify-content: center;
+  margin-top: 6px;
 }
 
 @media (max-width: 960px) {
