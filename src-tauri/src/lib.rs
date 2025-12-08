@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::process::Command;
+use std::{path::PathBuf, process::Command};
 
 #[derive(Debug, Serialize)]
 pub struct MediaInfo {
@@ -32,7 +32,7 @@ pub struct ConversionOptions {
 #[tauri::command]
 async fn analyze_media(path: String) -> Result<MediaInfo, String> {
     let output = tauri::async_runtime::spawn_blocking(move || {
-        Command::new("ffprobe")
+        Command::new(resolve_tool("ffprobe"))
             .args([
                 "-v",
                 "error",
@@ -56,6 +56,32 @@ async fn analyze_media(path: String) -> Result<MediaInfo, String> {
     let value: Value = serde_json::from_slice(&output.stdout)
         .map_err(|e| format!("Failed to parse ffprobe JSON: {e}"))?;
     parse_media_info(value)
+}
+
+fn resolve_tool(tool: &str) -> PathBuf {
+    if let Ok(exe_path) = std::env::current_exe() {
+        if let Some(parent) = exe_path.parent() {
+            let mut base = parent.to_path_buf();
+            base.push("bin");
+
+            #[cfg(windows)]
+            {
+                let mut candidate = base.clone();
+                candidate.push(format!("{tool}.exe"));
+                if candidate.exists() {
+                    return candidate;
+                }
+            }
+
+            let mut candidate = base.clone();
+            candidate.push(tool);
+            if candidate.exists() {
+                return candidate;
+            }
+        }
+    }
+
+    PathBuf::from(tool)
 }
 
 fn parse_media_info(value: Value) -> Result<MediaInfo, String> {
@@ -143,7 +169,7 @@ async fn run_conversion(options: ConversionOptions) -> Result<(), String> {
     let args = build_ffmpeg_args(&options)?;
 
     let output = tauri::async_runtime::spawn_blocking(move || {
-        Command::new("ffmpeg").args(&args).output()
+        Command::new(resolve_tool("ffmpeg")).args(&args).output()
     })
     .await
     .map_err(|e| format!("Failed to join ffmpeg task: {e}"))?

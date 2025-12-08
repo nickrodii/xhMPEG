@@ -203,7 +203,6 @@ select.custom-select {
   color: var(--text);
   appearance: auto;
   -webkit-appearance: auto;
-  -moz-appearance: auto;
   border-radius: 10px;
 }
 
@@ -216,7 +215,7 @@ input:focus {
 }
 
 input[type="number"] {
-  -moz-appearance: textfield;
+  appearance: textfield;
 }
 
 input[type="number"]::-webkit-outer-spin-button,
@@ -623,6 +622,7 @@ button:active:not(:disabled) {
   background-size: 200% 100%;
   background-repeat: repeat-x;
   -webkit-background-clip: text;
+  background-clip: text;
   -webkit-text-fill-color: transparent;
   animation: text-wave 6s linear infinite;
   text-shadow: 0 10px 28px rgba(0, 0, 0, 0.32);
@@ -1209,6 +1209,7 @@ button:active:not(:disabled) {
   background-size: 200% 100%;
   background-repeat: repeat-x;
   -webkit-background-clip: text;
+  background-clip: text;
   -webkit-text-fill-color: transparent;
   animation: text-wave 6s linear infinite;
   text-shadow: 0 10px 28px rgba(0, 0, 0, 0.32);
