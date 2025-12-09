@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::{path::PathBuf, process::Command};
+use std::{path::PathBuf, process::Command, process::Stdio};
+use std::io::{BufRead, BufReader};
+use tauri::Emitter;
 
 #[derive(Debug, Serialize)]
 pub struct MediaInfo {
@@ -161,24 +163,40 @@ fn parse_frame_rate(rate: &str) -> Option<f64> {
 }
 
 #[tauri::command]
-async fn run_conversion(options: ConversionOptions) -> Result<(), String> {
-    if options.end_ms <= options.start_ms {
-        return Err("End time must be greater than start time".to_string());
-    }
+async fn run_conversion(window: tauri::Window, options: ConversionOptions) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let args = build_ffmpeg_args(&options).map_err(|e| format!("Argument error: {}", e))?;
+        let mut child = Command::new(resolve_tool("ffmpeg"))
+            .args(&args)
+            .stdout(Stdio::piped()) // just in case i need it
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| format!("Failed to spawn: {}", e))?;
 
-    let args = build_ffmpeg_args(&options)?;
+        let stderr = child.stderr.take().ok_or("Failed to open stderr")?;
+        let reader = BufReader::new(stderr);
 
-    let output = tauri::async_runtime::spawn_blocking(move || {
-        Command::new(resolve_tool("ffmpeg")).args(&args).output()
-    })
-    .await
-    .map_err(|e| format!("Failed to join ffmpeg task: {e}"))?
-    .map_err(|e| format!("Failed to run ffmpeg: {e}"))?;
+        // line by line stream of output
+        for line in reader.lines() {
+            match line {
+                Ok(text) => {
+                    window.emit("PROGRESS", text.clone()).unwrap();
+                    println!("{}", text);
+                }
+                Err(e) => {
+                    println!("Error: {}", e);
+                }
+            }
+        }
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("ffmpeg failed: {stderr}"));
-    }
+        let status = child.wait().map_err(|e| format!("Waiting failed: {}", e))?;
+
+        if status.success() {
+            Ok(()) // last line, dont add semicolon
+        } else {
+            Err("ffmpeg failed".to_string())
+        }
+    }).await.map_err(|e| format!("Task failed: {}", e))??;
 
     Ok(())
 }

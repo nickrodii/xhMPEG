@@ -6,172 +6,40 @@ import { Store } from "@tauri-apps/plugin-store";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import "./App.css";
 
-type MediaInfo = {
-  duration_seconds: number;
-  width?: number;
-  height?: number;
-  fps?: number;
-  bitrate_kbps?: number;
-  has_video: boolean;
-};
+// Components
+import { WelcomePage } from "./components/WelcomePage";
+import { SettingsPage } from "./components/SettingsPage";
+import { RunningPage } from "./components/RunningPage";
+import { DonePage } from "./components/DonePage";
+import { OutputPage } from "./components/OutputPage";
+import { QualityPage } from "./components/QualityPage";
+import { AdvancedPage } from "./components/AdvancedPage";
 
-type NumericPreset = {
-  label: string;
-  value: string;
-  amount?: number;
-};
+// Utils
+import {
+  joinPaths,
+  fileNameFromPath,
+  parentDir,
+  baseNameNoExt,
+  formatHMS,
+  buildResolutionOptions
+} from "./utils/mediaUtils";
 
-type FormatOption = {
-  label: string;
-  value: string;
-  ext: string;
-};
+// Constants
+import {
+  type MediaInfo,
+  type NumericPreset,
+  FPS_PRESETS,
+  VIDEO_BITRATE_PRESETS,
+  AUDIO_BITRATE_PRESETS,
+  FORMAT_OPTIONS,
+  AUDIO_FORMAT_OPTIONS,
+  VIDEO_CODECS_BY_FORMAT,
+  AUDIO_CODECS_BY_FORMAT,
+  SETTINGS_STORE_FILE
+} from "./config/constants";
+import { TrimPage } from "./components/TrimPage";
 
-const FPS_PRESETS: NumericPreset[] = [
-  { label: "60 fps", value: "60", amount: 60 },
-  { label: "30 fps", value: "30", amount: 30 },
-  { label: "24 fps", value: "24", amount: 24 },
-  { label: "Custom", value: "custom" },
-];
-
-const VIDEO_BITRATE_PRESETS: NumericPreset[] = [
-  { label: "Source", value: "source" },
-  { label: "8000 kbps", value: "8000", amount: 8000 },
-  { label: "6000 kbps", value: "6000", amount: 6000 },
-  { label: "4000 kbps", value: "4000", amount: 4000 },
-  { label: "2500 kbps", value: "2500", amount: 2500 },
-  { label: "Custom", value: "custom" },
-];
-
-const AUDIO_BITRATE_PRESETS: NumericPreset[] = [
-  { label: "Source", value: "source" },
-  { label: "320 kbps", value: "320", amount: 320 },
-  { label: "192 kbps", value: "192", amount: 192 },
-  { label: "128 kbps", value: "128", amount: 128 },
-  { label: "Custom", value: "custom" },
-];
-
-const FORMAT_OPTIONS: FormatOption[] = [
-  { label: "MP4", value: "mp4", ext: "mp4" },
-  { label: "MKV", value: "mkv", ext: "mkv" },
-  { label: "MOV", value: "mov", ext: "mov" },
-  { label: "WebM", value: "webm", ext: "webm" },
-  { label: "AVI", value: "avi", ext: "avi" },
-  { label: "FLV", value: "flv", ext: "flv" },
-  { label: "GIF", value: "gif", ext: "gif" },
-];
-
-const AUDIO_FORMAT_OPTIONS: FormatOption[] = [
-  { label: "MP3", value: "mp3", ext: "mp3" },
-  { label: "WAV", value: "wav", ext: "wav" },
-  { label: "FLAC", value: "flac", ext: "flac" },
-  { label: "AAC", value: "m4a", ext: "m4a" },
-  { label: "OGG", value: "ogg", ext: "ogg" },
-  { label: "Opus", value: "opus", ext: "opus" },
-];
-
-const VIDEO_CODECS_BY_FORMAT: Record<string, string[]> = {
-  mp4: ["libx264", "libx265"],
-  mov: ["libx264", "libx265", "prores_ks", "mjpeg"],
-  mkv: ["libx264", "libx265", "libvpx-vp9", "prores_ks", "mjpeg"],
-  webm: ["libvpx-vp9"],
-  avi: ["libx264", "mjpeg"],
-  flv: ["libx264"],
-  gif: ["gif"],
-};
-
-const AUDIO_CODECS_BY_FORMAT: Record<string, string[]> = {
-  mp4: ["aac", "libmp3lame"],
-  mov: ["aac"],
-  mkv: ["aac", "libopus", "libvorbis", "libmp3lame", "flac"],
-  webm: ["libopus", "libvorbis"],
-  avi: ["libmp3lame"],
-  flv: ["aac"],
-  gif: [],
-  mp3: ["libmp3lame"],
-  wav: ["pcm_s16le"],
-  flac: ["flac"],
-  m4a: ["aac"],
-  ogg: ["libvorbis"],
-  opus: ["libopus"],
-};
-
-const SETTINGS_STORE_FILE = "settings.json";
-
-function joinPaths(dir: string, file: string): string {
-  if (!dir) return file;
-  if (dir.endsWith("/") || dir.endsWith("\\")) {
-    return `${dir}${file}`;
-  }
-  const sep = dir.includes("\\") ? "\\" : "/";
-  return `${dir}${sep}${file}`;
-}
-
-function fileNameFromPath(path: string): string {
-  return path.split(/[/\\]/).pop() ?? "";
-}
-
-function parentDir(path: string): string {
-  const match = path.match(/^(.*)[\\/][^\\/]+$/);
-  return match && match[1] ? match[1] : "";
-}
-
-function baseNameNoExt(name: string): string {
-  const dot = name.lastIndexOf(".");
-  if (dot <= 0) return name;
-  return name.slice(0, dot);
-}
-
-function formatHMS(ms: number): string {
-  if (!Number.isFinite(ms)) return "--:--";
-  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
-  if (hours > 0) {
-    return `${hours}:${minutes.toString().padStart(2, "0")}:${seconds
-      .toString()
-      .padStart(2, "0")}`;
-  }
-  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
-}
-
-function evenDimension(value: number): number {
-  const rounded = Math.round(value);
-  return rounded % 2 === 0 ? rounded : rounded + 1;
-}
-
-function buildResolutionOptions(sourceWidth: number, sourceHeight: number) {
-  const scaleOption = (label: string, factor: number, key: string) => ({
-    label: `${label} (${evenDimension(sourceWidth * factor)}x${evenDimension(sourceHeight * factor)})`,
-    value: key,
-    width: evenDimension(sourceWidth * factor),
-    height: evenDimension(sourceHeight * factor),
-  });
-
-  const opts = [
-    scaleOption("125%", 1.25, "scale_125"),
-    {
-      label: `Source (${sourceWidth}x${sourceHeight})`,
-      value: "source",
-      width: sourceWidth,
-      height: sourceHeight,
-    },
-    scaleOption("75%", 0.75, "scale_75"),
-    scaleOption("50%", 0.5, "scale_50"),
-  ];
-
-  const unique: typeof opts = [];
-  const seen = new Set<string>();
-  for (const o of opts) {
-    const key = `${o.width}x${o.height}`;
-    if (!seen.has(key)) {
-      seen.add(key);
-      unique.push(o);
-    }
-  }
-  return unique;
-}
 function App() {
   const [selectedFile, setSelectedFile] = useState<string>("");
   const [advancedMode, setAdvancedMode] = useState<boolean>(false);
@@ -680,639 +548,180 @@ function App() {
     }
   };
 
-  const renderTrimPage = () => {
-    const startPct = durationMs ? (startMs / durationMs) * 100 : 0;
-    const endPct = durationMs ? (endMs / durationMs) * 100 : 0;
-    return (
-      <section className="panel">
-        <div className="panel-header center">
-          <h2>Trim</h2>
-        </div>
-        <div className="trim-readout">
-          <div>
-            <p className="label">Start</p>
-            <p className="value">{formatHMS(startMs)}</p>
-          </div>
-          <div>
-            <p className="label">End</p>
-            <p className="value">{formatHMS(endMs)}</p>
-          </div>
-          <div>
-            <p className="label">Length</p>
-            <p className="value">{formatHMS(Math.max(0, endMs - startMs))}</p>
-          </div>
-        </div>
-        <div
-          className="trim-slider"
-          ref={sliderRef}
-          onPointerDown={(e) => {
-            if (durationMs <= 0) return;
-            const rect = sliderRef.current?.getBoundingClientRect();
-            if (!rect) return;
-            const ratio = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
-            const ms = ratio * durationMs;
-            const distanceToStart = Math.abs(ms - startMs);
-            const distanceToEnd = Math.abs(ms - endMs);
-            setDragging(distanceToStart <= distanceToEnd ? "start" : "end");
-            handlePointerMove(e.clientX);
-          }}
-        >
-          <div className="trim-track" />
-          <div
-            className="trim-range"
-            style={{ left: `${startPct}%`, width: `${Math.max(0, endPct - startPct)}%` }}
-          />
-          <div
-            className="trim-handle"
-            style={{ left: `${startPct}%` }}
-            onPointerDown={(e) => {
-              e.stopPropagation();
-              setDragging("start");
-            }}
-          />
-          <div
-            className="trim-handle"
-            style={{ left: `${endPct}%` }}
-            onPointerDown={(e) => {
-              e.stopPropagation();
-              setDragging("end");
-            }}
-          />
-        </div>
-      </section>
-    );
+  const resetForNewFile = () => {
+    setSelectedFile("");
+    setMediaInfo(null);
+    setStatus("");
+    setLastOutputPath("");
+    setStep(1);
   };
 
-  const renderQualityPage = () => (
-    <section className="panel quality-panel">
-      <div className="panel-header center">
-        <h2>Quality</h2>
-      </div>
-      <div className="quality-grid">
-        <div>
-          <p className="label">Resolution</p>
-          <select
-            className={resolutionPreset === "custom" ? "custom-select" : ""}
-            value={resolutionPreset}
-            onChange={(e) => setResolutionPreset(e.target.value)}
-            disabled={!mediaInfo || isAudioOnly || !mediaInfo?.has_video}
-          >
-            {[...resolutionOptions, { label: "Custom", value: "custom" }].map((preset) => (
-              <option key={preset.value} value={preset.value}>
-                {preset.label}
-              </option>
-            ))}
-          </select>
-          {resolutionPreset === "custom" && (
-            <div className="inline-fields">
-              <input
-                type="number"
-                placeholder="Width"
-                value={customWidth}
-                onChange={(e) => setCustomWidth(e.target.value)}
-              />
-              <span className="times">x</span>
-              <input
-                type="number"
-                placeholder="Height"
-                value={customHeight}
-                onChange={(e) => setCustomHeight(e.target.value)}
-              />
-            </div>
-          )}
-        </div>
+  const renderStepContent = () => {
+    if (step === 5) return (
+      <RunningPage/>
+    )
+    if (step === 6) return (
+      <DonePage 
+        lastOutputPath={lastOutputPath}
+        status={status}
+        onConvertAnother={resetForNewFile}
+        onOpenLocation={openOutputLocation}
+        onExit={() => getCurrentWindow().close()}
+        />
+    );
+    if (advancedMode && mediaInfo && step >= 2) {
+      return (
+        <AdvancedPage
+          // Media & State
+          mediaInfo={mediaInfo}
+          isAudioOnly={isAudioOnly}
+          conversionRunning={conversionRunning}
 
-        <div>
-          <p className="label">FPS</p>
-          <select
-            className={fpsPreset === "custom" ? "custom-select" : ""}
-            value={fpsPreset}
-            onChange={(e) => setFpsPreset(e.target.value)}
-            disabled={!mediaInfo || isAudioOnly || !mediaInfo?.has_video}
-          >
-            {fpsOptions.map((preset) => (
-              <option key={preset.value} value={preset.value}>
-                {preset.label}
-              </option>
-            ))}
-          </select>
-          {fpsPreset === "custom" && (
-            <input
-              type="number"
-              placeholder="fps"
-              value={customFps}
-              onChange={(e) => setCustomFps(e.target.value)}
-            />
-          )}
-        </div>
+          // Trim
+          startMs={startMs}
+          endMs={endMs}
+          durationMs={durationMs}
+          sliderRef={sliderRef}
+          setDragging={setDragging}
+          handlePointerMove={handlePointerMove}
 
-        <div>
-          <p className="label">Video bitrate</p>
-          <select
-            className={videoBitratePreset === "custom" ? "custom-select" : ""}
-            value={videoBitratePreset}
-            onChange={(e) => setVideoBitratePreset(e.target.value)}
-            disabled={!mediaInfo || isAudioOnly || !mediaInfo?.has_video}
-          >
-            {videoBitrateOptions.map((preset) => (
-              <option key={preset.value} value={preset.value}>
-                {preset.label}
-              </option>
-            ))}
-          </select>
-          {videoBitratePreset === "custom" && (
-            <input
-              type="number"
-              placeholder="kbps"
-              value={customVideoBitrate}
-              onChange={(e) => setCustomVideoBitrate(e.target.value)}
-            />
-          )}
-        </div>
-      </div>
-      {mediaInfo && mediaInfo.has_video && (
-        <div className="quality-audio-toggle">
-          <label className="advanced-toggle small-toggle">
-            <input
-              type="checkbox"
-              checked={forceAudioOnly}
-              onChange={(e) => updateForceAudioOnly(e.target.checked)}
-            />
-            <span className="label">Extract audio only</span>
-          </label>
-        </div>
-      )}
-    </section>
-  );
+          // Output
+          outputDir={outputDir}
+          pickOutputDir={pickOutputDir}
+          outputFilename={outputFilename}
+          setOutputFilename={setOutputFilename}
 
-  const renderOutputPage = () => (
-    <section className="panel centered-panel">
-      <div className="panel-header">
-        <h2>Output</h2>
-      </div>
-      <div className="output-row">
-        <div className="output-path">
-          <p className="label">Folder</p>
-          <div className="inline-fields">
-            <input type="text" value={outputDir} readOnly placeholder="Choose output folder" />
-          </div>
-        </div>
-        <button className="browse-btn output-browse" onClick={pickOutputDir} aria-label="Browse for folder">
-          <svg
-            width="18"
-            height="18"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <path d="M3 6h6l2 2h10v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />
-            <path d="M3 6V4a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v2" />
-          </svg>
-        </button>
-        <div className="output-format">
-          <p className="label">Format</p>
-          <select value={format} onChange={(e) => setFormat(e.target.value)}>
-            {formatOptions.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
-        </div>
-        {enableCodecSelection && (
-          <div className="output-codec inline-codec">
-            <p className="label">Codec</p>
-            <select
-              value={selectedCodec}
-              onChange={(e) => setSelectedCodec(e.target.value)}
-              disabled={!mediaInfo || codecOptions.length <= 1}
-            >
-              {codecOptions.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
-      </div>
-      <div className="output-file">
-        <p className="label">Filename</p>
-        <div className="inline-fields">
-          <input
-            type="text"
-            value={outputFilename}
-            onChange={(e) => setOutputFilename(e.target.value.replace(/\.[^/.]+$/, ""))}
-            placeholder="output"
-          />
-          <span className="suffix">.{currentFormat.ext}</span>
-        </div>
-      </div>
-    </section>
-  );
+          // Format & Codec
+          format={format}
+          setFormat={setFormat}
+          formatOptions={formatOptions}
+          currentFormat={currentFormat}
+          enableCodecSelection={enableCodecSelection}
+          selectedCodec={selectedCodec}
+          setSelectedCodec={setSelectedCodec}
+          codecOptions={codecOptions}
 
-  const renderRunningPage = () => (
-    <section className="panel run-screen">
-      <h2>Running conversion...</h2>
-      <div className="progress">
-        <div className="progress-bar smooth" />
-      </div>
-      <p className="helper">Please wait...</p>
-    </section>
-  );
+          // Quality
+          resolutionPreset={resolutionPreset}
+          setResolutionPreset={setResolutionPreset}
+          resolutionOptions={resolutionOptions}
+          customWidth={customWidth}
+          setCustomWidth={setCustomWidth}
+          customHeight={customHeight}
+          setCustomHeight={setCustomHeight}
 
-  const renderDonePage = () => (
-    <section className="panel done-screen">
-      <h1 className="done-title">Conversion Complete</h1>
-      {lastOutputPath ? (
-        <div className="file-save-block">
-          <p className="helper label">File saved as</p>
-          <p className="saved-path">{lastOutputPath}</p>
-        </div>
-      ) : (
-        <p className="helper">{status || "Conversion finished."}</p>
-      )}
-      <div className="inline-fields">
-        <button
-          className="ghost"
-          onClick={() => {
+          fpsPreset={fpsPreset}
+          setFpsPreset={setFpsPreset}
+          fpsOptions={fpsOptions}
+          customFps={customFps}
+          setCustomFps={setCustomFps}
+
+          videoBitratePreset={videoBitratePreset}
+          setVideoBitratePreset={setVideoBitratePreset}
+          videoBitrateOptions={videoBitrateOptions}
+          customVideoBitrate={customVideoBitrate}
+          setCustomVideoBitrate={setCustomVideoBitrate}
+
+          // Audio Toggle
+          forceAudioOnly={forceAudioOnly}
+          updateForceAudioOnly={updateForceAudioOnly}
+
+          // Actions
+          onRun={runConversion}
+          onBack={() => {
+            // The logic from your original Back button
             setSelectedFile("");
             setMediaInfo(null);
             setStatus("");
             setLastOutputPath("");
             setStep(1);
           }}
-        >
-          Convert another file
-        </button>
-        <button
-          className="ghost"
-          onClick={openOutputLocation}
-          disabled={!lastOutputPath}
-        >
-          Go to file
-        </button>
-        <button
-          className="primary"
-          onClick={() => {
-            getCurrentWindow().close();
-          }}
-        >
-          Exit
-        </button>
-      </div>
-    </section>
-  );
-
-  const renderAdvancedPage = () => {
-    const startPct = durationMs ? (startMs / durationMs) * 100 : 0;
-    const endPct = durationMs ? (endMs / durationMs) * 100 : 0;
-    const clipMs = Math.max(0, endMs - startMs);
-
-    return (
-      <div className="advanced-layout">
-        <div className="advanced-grid-2">
-          <section className="panel compact-panel advanced-output-panel">
-            <div className="advanced-output-row">
-              <div className="output-path">
-                <p className="label">Folder</p>
-                <div className="inline-fields">
-                  <input
-                    type="text"
-                    className="output-path-input"
-                    value={outputDir}
-                    readOnly
-                    placeholder="Choose output folder"
-                  />
-                  <button className="browse-btn" onClick={pickOutputDir} aria-label="Browse for folder">
-                    <svg
-                      width="18"
-                      height="18"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      aria-hidden="true"
-                    >
-                      <path d="M3 6h6l2 2h10v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />
-                      <path d="M3 6V4a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v2" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-            </div>
-            <div className="output-file advanced-filename">
-              <div className="inline-fields">
-                <input
-                  type="text"
-                  value={outputFilename}
-                  onChange={(e) => setOutputFilename(e.target.value.replace(/\.[^/.]+$/, ""))}
-                  placeholder="output"
-                />
-                <span className="suffix">.{currentFormat.ext}</span>
-              </div>
-            </div>
-          </section>
-
-          <section className="panel compact-panel advanced-format-panel">
-            <div className="format-codec-row">
-              <div className="output-format">
-                <p className="label">Format</p>
-                <select value={format} onChange={(e) => setFormat(e.target.value)}>
-                  {formatOptions.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              {enableCodecSelection && (
-                <div className="output-codec">
-                  <p className="label">Codec</p>
-                  <select
-                    value={selectedCodec}
-                    onChange={(e) => setSelectedCodec(e.target.value)}
-                    disabled={!mediaInfo || codecOptions.length <= 1}
-                  >
-                    {codecOptions.map((c) => (
-                      <option key={c} value={c}>
-                        {c}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-            </div>
-          </section>
-
-          <section className="panel compact-panel trim-short advanced-trim-panel">
-            <div className="trim-readout compact-readout">
-              <div>
-                <p className="label">Start</p>
-                <p className="value">{formatHMS(startMs)}</p>
-              </div>
-              <div>
-                <p className="label">End</p>
-                <p className="value">{formatHMS(endMs)}</p>
-              </div>
-              <div>
-              <p className="label">Length</p>
-                <p className="value">{formatHMS(clipMs)}</p>
-              </div>
-            </div>
-            <div
-              className="trim-slider"
-              ref={sliderRef}
-              onPointerDown={(e) => {
-                if (durationMs <= 0) return;
-                const rect = sliderRef.current?.getBoundingClientRect();
-                if (!rect) return;
-                const ratio = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
-                const ms = ratio * durationMs;
-                const distanceToStart = Math.abs(ms - startMs);
-                const distanceToEnd = Math.abs(ms - endMs);
-                setDragging(distanceToStart <= distanceToEnd ? "start" : "end");
-                handlePointerMove(e.clientX);
-              }}
-            >
-              <div className="trim-track" />
-              <div
-                className="trim-range"
-                style={{ left: `${startPct}%`, width: `${Math.max(0, endPct - startPct)}%` }}
-              />
-              <div
-                className="trim-handle"
-                style={{ left: `${startPct}%` }}
-                onPointerDown={(e) => {
-                  e.stopPropagation();
-                  setDragging("start");
-                }}
-              />
-              <div
-                className="trim-handle"
-                style={{ left: `${endPct}%` }}
-                onPointerDown={(e) => {
-                  e.stopPropagation();
-                  setDragging("end");
-                }}
-              />
-            </div>
-          </section>
-
-          {mediaInfo?.has_video && (
-            <section className="panel compact-panel quality-wide">
-              <div className="advanced-inline">
-                <div className="grow">
-                  <p className="label">Resolution</p>
-                  <select
-                    className={resolutionPreset === "custom" ? "custom-select" : ""}
-                    value={resolutionPreset}
-                    onChange={(e) => setResolutionPreset(e.target.value)}
-                    disabled={!mediaInfo || isAudioOnly}
-                  >
-                    {[...resolutionOptions, { label: "Custom", value: "custom" }].map((preset) => (
-                      <option key={preset.value} value={preset.value}>
-                        {preset.label}
-                      </option>
-                    ))}
-                  </select>
-                  {resolutionPreset === "custom" && (
-                    <div className="inline-fields">
-                      <input
-                        type="number"
-                        placeholder="Width"
-                        value={customWidth}
-                        onChange={(e) => setCustomWidth(e.target.value)}
-                      />
-                      <span className="times">x</span>
-                      <input
-                        type="number"
-                        placeholder="Height"
-                        value={customHeight}
-                        onChange={(e) => setCustomHeight(e.target.value)}
-                      />
-                    </div>
-                  )}
-                </div>
-                <div className="grow">
-                  <p className="label">FPS</p>
-                  <select
-                    className={fpsPreset === "custom" ? "custom-select" : ""}
-                    value={fpsPreset}
-                    onChange={(e) => setFpsPreset(e.target.value)}
-                    disabled={!mediaInfo || isAudioOnly}
-                  >
-                    {fpsOptions.map((preset) => (
-                      <option key={preset.value} value={preset.value}>
-                        {preset.label}
-                      </option>
-                    ))}
-                  </select>
-                  {fpsPreset === "custom" && (
-                    <input
-                      type="number"
-                      placeholder="fps"
-                      value={customFps}
-                      onChange={(e) => setCustomFps(e.target.value)}
-                    />
-                  )}
-                </div>
-                <div className="grow">
-                  <p className="label">Video bitrate</p>
-                  <select
-                    className={videoBitratePreset === "custom" ? "custom-select" : ""}
-                    value={videoBitratePreset}
-                    onChange={(e) => setVideoBitratePreset(e.target.value)}
-                    disabled={!mediaInfo || isAudioOnly}
-                  >
-                    {videoBitrateOptions.map((preset) => (
-                      <option key={preset.value} value={preset.value}>
-                        {preset.label}
-                      </option>
-                    ))}
-                  </select>
-                  {videoBitratePreset === "custom" && (
-                    <input
-                      type="number"
-                      placeholder="kbps"
-                      value={customVideoBitrate}
-                      onChange={(e) => setCustomVideoBitrate(e.target.value)}
-                    />
-                  )}
-                </div>
-              </div>
-            </section>
-          )}
-        </div>
-
-        <div className="advanced-actions">
-          {mediaInfo?.has_video && (
-            <div className="advanced-inline" style={{ marginRight: "auto" }}>
-              <label className="advanced-toggle small-toggle">
-                <input
-                  type="checkbox"
-                  checked={forceAudioOnly}
-                  onChange={(e) => updateForceAudioOnly(e.target.checked)}
-                />
-                <span className="label">Extract audio only</span>
-              </label>
-            </div>
-          )}
-          <div className="advanced-buttons">
-            <button
-              className="ghost"
-              onClick={() => {
-                setSelectedFile("");
-                setMediaInfo(null);
-                setStatus("");
-                setLastOutputPath("");
-                setStep(1);
-              }}
-            >
-              Back
-            </button>
-            <button
-              className="run-cta"
-              onClick={runConversion}
-              disabled={!mediaInfo || conversionRunning}
-            >
-              {conversionRunning ? "Converting..." : "Run"}
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  const renderWelcome = () => (
-    <section className="welcome-plain">
-      <h1 className="brand-title">xhMPEG</h1>
-      <p className="muted welcome-subtitle">
-        Trim, resize, and reformat any audio or video file using FFmpeg... Without the terminal.
-      </p>
-      <button
-        className="primary"
-        onClick={pickMediaFile}
-        disabled={loadingInfo}
-        style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}
-      >
-        <svg
-          width="18"
-          height="18"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden="true"
-        >
-          <path d="M4 20h16" />
-          <path d="M12 4v9" />
-          <path d="m8 10 4 4 4-4" />
-        </svg>
-        {loadingInfo ? "Analyzing..." : "Import media"}
-      </button>
-    </section>
-  );
-
-  const renderSettingsPage = () => (
-    <>
-      <h2 className="settings-heading">Settings</h2>
-      <section className="panel settings-panel">
-        <label className="advanced-toggle">
-          <input
-            type="checkbox"
-            checked={advancedMode}
-            onChange={(e) => updateAdvancedMode(e.target.checked)}
-          />
-          <span className="label">Advanced Mode</span>
-        </label>
-        <label className="advanced-toggle">
-          <input
-            type="checkbox"
-            checked={autoOpenExit}
-            onChange={(e) => updateAutoOpenExit(e.target.checked)}
-          />
-          <span className="label">Open location and exit after conversion</span>
-        </label>
-        <label className="advanced-toggle">
-          <input
-            type="checkbox"
-            checked={enableCodecSelection}
-            onChange={(e) => updateEnableCodecSelection(e.target.checked)}
-          />
-          <span className="label">Allow codec selection</span>
-        </label>
-      </section>
-    </>
-  );
-
-  const renderStepContent = () => {
-    if (step === 5) return renderRunningPage();
-    if (step === 6) return renderDonePage();
-    if (advancedMode && mediaInfo && step >= 2) {
-      return renderAdvancedPage();
+        />
+      );
     }
     switch (step) {
       case 0:
-        return renderSettingsPage();
+        return (
+          <SettingsPage
+            advancedMode={advancedMode}
+            setAdvancedMode={updateAdvancedMode}
+
+            autoOpenExit={autoOpenExit}
+            setAutoOpenExit={updateAutoOpenExit}
+
+            enableCodecSelection={enableCodecSelection}
+            setEnableCodecSelection={updateEnableCodecSelection}
+          />
+        );
       case 1:
-        return renderWelcome();
+        return (
+          <WelcomePage
+            onPickMedia={pickMediaFile}
+            loading={loadingInfo}
+          />
+        );
       case 2:
-        return renderTrimPage();
+        return (
+          <TrimPage
+            startMs={startMs}
+            endMs={endMs}
+            durationMs={durationMs}
+            sliderRef={sliderRef}
+            setDragging={setDragging}
+            handlePointerMove={handlePointerMove}
+            />
+        );
       case 3:
-        return renderQualityPage();
+        return (
+          <QualityPage
+            mediaInfo={mediaInfo}
+            isAudioOnly={isAudioOnly}
+            resolutionPreset={resolutionPreset}
+            setResolutionPreset={setResolutionPreset}
+            resolutionOptions={resolutionOptions}
+            customWidth={customWidth}
+            setCustomWidth={setCustomWidth}
+            customHeight={customHeight}
+            setCustomHeight={setCustomHeight}
+            fpsPreset={fpsPreset}
+            setFpsPreset={setFpsPreset}
+            fpsOptions={fpsOptions}
+            customFps={customFps}
+            setCustomFps={setCustomFps}
+            videoBitratePreset={videoBitratePreset}
+            setVideoBitratePreset={setVideoBitratePreset}
+            videoBitrateOptions={videoBitrateOptions}
+            customVideoBitrate={customVideoBitrate}
+            setCustomVideoBitrate={setCustomVideoBitrate}
+            forceAudioOnly={forceAudioOnly}
+            updateForceAudioOnly={updateForceAudioOnly}
+            />
+        );
       case 4:
-        return renderOutputPage();
+        return (
+          <OutputPage
+            mediaInfo={mediaInfo}
+            outputDir={outputDir}
+            outputFilename={outputFilename}
+            setOutputFilename={setOutputFilename}
+            format={format}
+            setFormat={setFormat}
+            selectedCodec={selectedCodec}
+            setSelectedCodec={setSelectedCodec}
+            formatOptions={formatOptions}
+            currentFormat={currentFormat}
+            enableCodecSelection={enableCodecSelection}
+            codecOptions={codecOptions}
+            onBrowse={pickOutputDir}
+            />
+        );
       default:
-        return renderWelcome();
+        return (
+          <WelcomePage
+            onPickMedia={pickMediaFile}
+            loading={loadingInfo}
+            />
+        );
     }
   };
 
@@ -1342,8 +751,6 @@ function App() {
             onClick={handleMinimize}
             title="Minimize"
             data-tauri-drag-region="false"
-            onMouseDown={(e) => e.stopPropagation()}
-            onPointerDown={(e) => e.stopPropagation()}
           >
             <svg
               className="no-drag"
@@ -1363,8 +770,6 @@ function App() {
             onClick={handleClose}
             title="Close"
             data-tauri-drag-region="false"
-            onMouseDown={(e) => e.stopPropagation()}
-            onPointerDown={(e) => e.stopPropagation()}
           >
             <svg
               className="no-drag"
